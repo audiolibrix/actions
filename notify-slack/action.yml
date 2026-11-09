@@ -1,0 +1,60 @@
+# Notifikace o běhu workflow do Slacku, do kanálu, pro který je vystavený
+# webhook.
+#
+#   event: start    běh začal
+#   event: result   běh skončil — úspěch, selhání nebo zrušení
+#
+# U `result` patří action do závěrečného jobu s `if: always()` a `needs` na
+# všechny joby, o kterých má rozhodovat. Ze `needs` se pozná, jestli něco
+# selhalo; který krok a odkaz na jeho log si action dohledá přes API běhu,
+# takže job potřebuje `permissions: actions: read`.
+#
+#   uses: audiolibrix/github-actions/notify-slack@v1
+#
+# Selhání notifikace běh neshodí — Slack, který zrovna neodpovídá, nemá
+# zastavit nasazení. Skončí to varováním v logu.
+name: Notifikace do Slacku
+description: Pošle do Slacku začátek nebo výsledek běhu workflow.
+
+inputs:
+  webhook:
+    description: URL incoming webhooku Slacku, předává se ze secretu.
+    required: true
+  event:
+    description: "`start`, nebo `result`"
+    required: true
+  title:
+    description: Jméno, pod kterým se běh ve zprávě ohlásí. Bez něj jméno repozitáře.
+    required: false
+  needs:
+    description: Pro `result` — `toJSON(needs)` závěrečného jobu.
+    required: false
+    default: "{}"
+  success-text:
+    description: Pro `result` — co znamená úspěch, třeba „Nasazeno, release 1.4.2“.
+    required: false
+  failure-text:
+    description: Pro `result` — vysvětlení navíc, když něco selže.
+    required: false
+  github-token:
+    description: Token na čtení jobů a commitu přes API.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@v8
+      env:
+        NOTIFY_WEBHOOK: ${{ inputs.webhook }}
+        NOTIFY_EVENT: ${{ inputs.event }}
+        NOTIFY_TITLE: ${{ inputs.title }}
+        NOTIFY_NEEDS: ${{ inputs.needs }}
+        NOTIFY_SUCCESS_TEXT: ${{ inputs.success-text }}
+        NOTIFY_FAILURE_TEXT: ${{ inputs.failure-text }}
+        ACTION_PATH: ${{ github.action_path }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const notifySlack = require(`${process.env.ACTION_PATH}/notify.js`);
+          await notifySlack({ github, context, core });
